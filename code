@@ -1,0 +1,136 @@
+#include <Wire.h>
+#include <Servo.h>
+#include <Adafruit_MotorShield.h>
+
+#define distanceSensorPin A0
+
+//------------------------------------------------------
+// Is a party happening currently?
+bool bPartyHappening = false;
+
+// Expected extrema for sensor values. 
+// This is empirically determined; your mileage may vary!
+int maxRawSensorValue = 120; // values more than this will be ignored
+int minRawSensorValue =  100; // values less than this will be ignored
+
+// Timestamp when we were most recently partying
+unsigned long mostRecentPartyTime;
+unsigned long deathParty;
+
+// What degree the servo is rotated to.
+float servo2Degree = 0;
+
+// What direction the stepper is spinning, either -1 or +1
+int stepperStep = -1;
+
+// Running average to smooth distance servo
+float runningAvgServo = 90.0;
+
+//------------------------------------------------------
+// create the motor shield object
+Adafruit_MotorShield AFMS = Adafruit_MotorShield();
+
+// connect a stepper motor to motor port #2 (M3 and M4) with 200 steps per revolution (3.6 degrees)
+Adafruit_StepperMotor *stepper = AFMS.getStepper(6000, 2);
+
+// connect a DC motor to port M1
+Adafruit_DCMotor *motor = AFMS.getMotor(1);
+
+// connect a servo to servo 1 and servo 2
+Servo servo1;
+Servo servo2;
+float angle;
+float vel;
+
+//------------------------------------------------------
+void setup() { 
+  float angle = 0.0;
+  float vel = 1.0;
+  
+  // Start the serial port.
+  // We need this in order to print debugging info.
+  Serial.begin(9600);
+
+  // Initialize the AdaFruit Motor Shield
+  AFMS.begin();
+
+  // attach servo1 to pin #10
+  servo1.attach(10);
+
+  // attach servo2 to pin #9
+  servo2.attach(9);
+}
+
+
+//---------------------------------------------------------
+void loop() {
+
+  // Update our world (sensors & motors) every 5 milliseconds
+  delay(5);
+ 
+  // Fetch  values from the IR distance sensor.
+  int rawSensorValue = analogRead(distanceSensorPin);
+
+  if((rawSensorValue < maxRawSensorValue) && (rawSensorValue > minRawSensorValue))
+  {
+     Serial.println(rawSensorValue);
+  }
+
+
+  //If the sensor value is within an acceptable range
+  if ((rawSensorValue < maxRawSensorValue) &&
+      (rawSensorValue > minRawSensorValue)) {
+    // Store the current time. 
+    // It's the most recent interaction timestamp.
+       bPartyHappening = true;
+       stepperStep = 1;
+       mostRecentPartyTime = 0;
+      }
+   else
+   {
+      mostRecentPartyTime += 1;
+    }
+
+    if (mostRecentPartyTime > 500)
+    {
+      bPartyHappening = false;
+    }
+
+    if(mostRecentPartyTime > 2)
+    {
+      deathParty += 1;
+    }
+    else if (mostRecentPartyTime < 50)
+    {
+      deathParty = 0;
+    }
+
+    // Spin the stepper 5 little turns at a time.
+    if (bPartyHappening && deathParty < 400) {
+      stepper->step(1, FORWARD, INTERLEAVE);
+     } 
+     
+//   else {
+//      stepper->step(20, BACKWARD, INTERLEAVE);
+//    }
+
+    vel = map(rawSensorValue, minRawSensorValue, maxRawSensorValue, 100.0, 30.0);
+    angle += vel;
+    
+    if(angle >= 60){
+      vel = vel*-1.0;
+      angle = 60;
+    }
+
+    if(angle <= 0) {
+      vel = vel*-1.0;
+      angle = 0;
+    }
+
+    if(mostRecentPartyTime < 2)
+    {
+      servo1.write (angle);
+      servo2.write(map(angle, 0, 60, 60, 0));
+    }
+
+}
